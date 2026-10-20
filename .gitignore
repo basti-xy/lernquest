@@ -1,0 +1,17 @@
+# Persönliche Inhalte gehören ins private Daten-Repository, nicht hierher
+decks/
+media/
+public/
+docs/media/
+docs/decks/
+data/
+# lokaler Server: Fortschritt, Backups, Zertifikat und privater Schlüssel
+*.pem
+*.cer
+*.key
+progress*.json
+*backup*
+*.zip
+# Python
+__pycache__/
+*.pyc
