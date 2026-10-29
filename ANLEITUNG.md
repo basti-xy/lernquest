@@ -60,6 +60,17 @@ Am einfachsten: Skript/Folien/Notizen an Claude geben und die Datei erzeugen las
 }
 ```
 
+Auf Modulebene optional: `"extras"` – zusätzliche Fragengruppen, die nur dabei sind, wenn man sie auf der
+Modulseite unter „Fragenauswahl“ anhakt (z. B. Kontrollfragen). Karten der Gruppe bekommen `"extra": "<id>"`;
+Prüfungsfragen ohne `extra` sind immer dabei. Abgewählte Karten fallen überall heraus, ihr Lernstand bleibt erhalten.
+
+```json
+"extras": [
+  { "id": "kontroll", "label": "Kontrollfragen", "name": "Kontrollfrage", "note": "Hinweis unter dem Haken" }
+]
+```
+(`name` = Bezeichnung einer Prüfungsfrage dieser Gruppe, z. B. „Kontrollfrage 4.8“.)
+
 Auf Modulebene optional: `"examDate": "JJJJ-MM-TT"` – Prüfungsdatum dieses Moduls. Ohne Angabe gilt
 das Standard-Prüfungsdatum aus ⚙️ (wird mit dem Fortschritt synchronisiert); pro Modul in ⚙️ änderbar.
 

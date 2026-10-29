@@ -184,6 +184,8 @@ def load_decks():
             "title": str(raw.get("title") or deck_id),
             "description": str(raw.get("description") or ""),
             "examDate": str(raw.get("examDate") or ""),  # optional, Format JJJJ-MM-TT
+            # optional: zusätzliche Fragengruppen (Karten mit "extra": "<id>"), nur auf Wunsch dabei
+            "extras": [e for e in (raw.get("extras") or []) if isinstance(e, dict) and e.get("id")],
             "chapters": chapters,
         })
     decks.sort(key=lambda d: d["title"].lower())

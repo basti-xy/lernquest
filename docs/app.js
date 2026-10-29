@@ -364,6 +364,11 @@ const setCacheIndex = idx => LS.set('lq-cache-index', idx);
 
 const REQUIRED_FIELD = { qa: 'a', exam: 'answer', order: 'items', pairs: 'pairs', grid: 'rows' };
 
+// Zusätzliche Fragengruppen eines Moduls (z. B. Kontrollfragen), Karten mit "extra": "<id>" – nur auf Wunsch dabei.
+const normExtras = x => (Array.isArray(x) ? x : []).filter(e => isObj(e) && e.id).map(e => ({
+  id: String(e.id), label: String(e.label || e.id), name: String(e.name || e.label || e.id), note: String(e.note || ''),
+}));
+
 // Prüft Moduldateien (gleiche Regeln wie load_decks() in server.py).
 function validateDecks(files) {
   const decks = [], warnings = [], seen = new Set();
@@ -389,7 +394,7 @@ function validateDecks(files) {
       }
       return { id: chId, title: String(ch.title || chId), cards };
     });
-    decks.push({ id, title: String(raw.title || id), description: String(raw.description || ''), examDate: String(raw.examDate || ''), chapters });
+    decks.push({ id, title: String(raw.title || id), description: String(raw.description || ''), examDate: String(raw.examDate || ''), extras: normExtras(raw.extras), chapters });
   }
   decks.sort((x, y) => x.title.toLowerCase().localeCompare(y.title.toLowerCase()));
   return { decks, warnings };
@@ -558,10 +563,26 @@ function dayAgg() {
 
 let DECKS = [], DECK_WARN = [], INFO = {};
 
+// Eingeschaltete Zusatzgruppen eines Moduls (Einstellung pro Modul, wird mit dem Fortschritt synchronisiert)
+const extrasOn = d => { const v = setting(`extras:${d.id}`); return Array.isArray(v) ? v : []; };
+
 function prepDeck(d) {
   const cards = [];
-  d.chapters.forEach((ch, ci) => ch.cards.forEach(c => cards.push({ ...c, type: c.type || 'qa', key: `${d.id}/${c.id}`, ch: ch.id, chIndex: ci, chTitle: ch.title })));
-  d._cards = cards;
+  d.extras ||= [];
+  const ex = Object.fromEntries(d.extras.map(e => [e.id, e]));
+  d.chapters.forEach((ch, ci) => ch.cards.forEach(c => cards.push({ ...c, type: c.type || 'qa', key: `${d.id}/${c.id}`, ch: ch.id, chIndex: ci, chTitle: ch.title, _extra: ex[c.extra] || null })));
+  d._all = cards;
+  // _cards = alle Karten, die gerade dazugehören: Karten abgewählter Zusatzgruppen fallen überall heraus
+  // (Lernen, Statistik, Weltkarte, Kapitelübersicht). Ihr Lernstand bleibt erhalten.
+  let sig = null, vis = cards;
+  Object.defineProperty(d, '_cards', {
+    configurable: true,
+    get() {
+      const on = extrasOn(d), key = on.join('|');
+      if (key !== sig) { sig = key; vis = cards.filter(c => !c._extra || on.includes(c._extra.id)); }
+      return vis;
+    },
+  });
   d._byKey = Object.fromEntries(cards.map(c => [c.key, c]));
   for (const c of cards) c._mcOk = c.type === 'qa' && distractors(c, d, 3).length >= 3;
   return d;
@@ -1469,6 +1490,8 @@ function renderHome() {
     <span class="module-switch">Wechseln ▾</span>
   </button>
 
+  ${extrasHTML(deck)}
+
   <section class="card">${levelBlock(st.lv)}</section>
 
   <section class="card hero">
@@ -1537,6 +1560,18 @@ function modulesSheetHTML(cur) {
     }).join('')}
     <p class="muted small">Neue Module erscheinen hier automatisch, sobald ihre Datei im privaten Daten-Repository unter <code>${DATA_DIR}/decks/</code> liegt. XP, Level, Streak und Erfolge gelten für alle Module zusammen.</p>
   </div>`;
+}
+
+// Fragenauswahl auf der Modulseite: Prüfungsfragen immer, Zusatzgruppen per Haken
+function extrasHTML(deck) {
+  if (!deck.extras.length) return '';
+  const on = extrasOn(deck), n = id => deck._all.filter(c => (c._extra?.id || null) === id).length;
+  return `<section class="card extras">
+    <div class="sec-head"><h2>Fragenauswahl</h2></div>
+    <label class="ex-row fixed"><input type="checkbox" checked disabled><span class="grow"><b>Prüfungsfragen</b><span class="muted small"> · immer dabei</span></span><span class="muted small">${n(null)}</span></label>
+    ${deck.extras.map(e => `<label class="ex-row"><input type="checkbox" data-extra="${esc(e.id)}" ${on.includes(e.id) ? 'checked' : ''}>
+      <span class="grow"><b>${esc(e.label)}</b>${e.note ? `<span class="ex-note muted small">${esc(e.note)}</span>` : ''}</span><span class="muted small">${n(e.id)}</span></label>`).join('')}
+  </section>`;
 }
 
 // ---------- Weltkarte ----------
@@ -1644,7 +1679,7 @@ function peekHTML(c, cards) {
       <button class="btn ghost" data-act="peek-back">‹ Alle Fragen</button>
       <span class="muted small">${i + 1} / ${cards.length}</span>
     </div>
-    <div class="chips">${c.parent ? parentChip(c) : ''}<span class="chip mode">${typeLabel(c) || '❓ Frage'}</span></div>
+    <div class="chips">${extraChip(c)}${c.parent ? parentChip(c) : ''}<span class="chip mode">${typeLabel(c) || '❓ Frage'}</span></div>
     <div class="peek-q">${inline(c.q)}</div>${qImg(c)}`;
   let body;
   if (c.type === 'exam') {
@@ -1685,14 +1720,16 @@ function renderSession() {
 const qImg = c => (c.img ? `<div class="q-img md">${md([`![](${c.img})`])}</div>` : '');
 const hintHTML = c => (c.hint ? `<div class="hint">💡 ${fmt(c.hint)}</div>` : '');
 const parentChip = c => (c.parent ? `<span class="chip">Teilübung zu ${esc(c.parent)}</span>` : '');
-const chips = (c, label, extra = '') => `<div class="chips">${extra}<span class="chip">${esc(c.chTitle)}</span>${parentChip(c)}<span class="chip mode">${label}</span></div>`;
+const extraChip = c => (c._extra ? `<span class="chip extra">${esc(c._extra.label)}</span>` : '');
+const chips = (c, label, extra = '') => `<div class="chips">${extra}<span class="chip">${esc(c.chTitle)}</span>${extraChip(c)}${parentChip(c)}<span class="chip mode">${label}</span></div>`;
 const TYPE_LABEL = { order: '🔢 Reihenfolge', pairs: '🔗 Zuordnen' };
-const typeLabel = c => (c.type === 'exam' ? `📝 Prüfungsfrage ${esc(c.label || '')}` : c.type === 'grid' ? (c.multi ? '☑️ Ankreuzen' : '🗂️ Einordnen') : TYPE_LABEL[c.type]);
+const examName = c => (c._extra ? c._extra.name : 'Prüfungsfrage');
+const typeLabel = c => (c.type === 'exam' ? `📝 ${esc(examName(c))} ${esc(c.label || '')}` : c.type === 'grid' ? (c.multi ? '☑️ Ankreuzen' : '🗂️ Einordnen') : TYPE_LABEL[c.type]);
 
 function introHTML(it) {
   const c = cardOf(it.key);
   if (c.type === 'exam') {
-    return `${chips(c, `✨ Neue Prüfungsfrage ${esc(c.label || '')}`)}
+    return `${chips(c, `✨ Neue ${esc(examName(c))} ${esc(c.label || '')}`)}
       <div class="qcard exam"><div class="q">${inline(c.q)}</div>${qImg(c)}</div>
       <div class="card md">${md(c.answer)}</div>
       <div class="card"><h2>Darauf kommt es an</h2><ul class="keypoints">${c.checklist.map(p => `<li>${inline(p)}</li>`).join('')}</ul></div>
@@ -2257,6 +2294,13 @@ app.addEventListener('submit', e => {
 app.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.change === 'deck') { LS.set('lq-deck', el.value); render(); return; }
+  if (el.dataset.extra) {
+    const deck = activeDeck(), id = el.dataset.extra;
+    const on = extrasOn(deck).filter(x => x !== id);
+    setSetting(`extras:${deck.id}`, el.checked ? [...on, id] : on);
+    render();
+    return;
+  }
   if (el.id === 'import') { importProgress(el.files[0]); return; }
   const k = el.dataset.set;
   if (!k) return;
