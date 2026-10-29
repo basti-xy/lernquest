@@ -3,7 +3,8 @@
 Statische Lern-App (HTML/CSS/JS, kein Backend) zum spielerischen Auswendiglernen:
 Spaced Repetition, verschiedene Abfragearten (Multiple Choice, Eintippen, Lückentext, Karteikarte,
 Zuordnen, Reihenfolge, Ankreuzen, Prüfungsfragen mit Checkliste), XP, Level, Streak, Tagesquests,
-Erfolge, Speed-Runde und eine Weltkarte pro Modul.
+Erfolge, Speed-Runde und eine Weltkarte pro Modul. In der Kapitelübersicht (Kapitel auf der Weltkarte
+antippen) lässt sich jede Frage samt Lösung nachlesen, ohne abgefragt zu werden.
 
 Die **Lerninhalte und der Fortschritt liegen nicht in diesem Repository**, sondern in einem privaten
 Daten-Repository. Die App lädt sie über die GitHub-API mit einem persönlichen Token, den man pro Gerät

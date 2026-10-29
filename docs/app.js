@@ -1367,7 +1367,7 @@ function endSpeed(quit) {
 // =====================================================================
 
 function render() {
-  if (view !== 'home') { mapSel = null; modSheet = false; }
+  if (view !== 'home') { mapSel = null; peekKey = null; modSheet = false; }
   document.body.classList.toggle('noscroll', !!mapSel || modSheet);
   ({ home: renderHome, session: renderSession, summary: renderSummary, settings: renderSettings, speed: renderSpeed, speedEnd: renderSpeedEnd, setup: renderSetup })[view]();
   hydrateImages();
@@ -1542,6 +1542,8 @@ function modulesSheetHTML(cur) {
 // ---------- Weltkarte ----------
 
 let mapSel = null; // geöffnetes Kapitel in der Weltkarte
+let peekKey = null;  // Karte, die in der Kapitelübersicht zum Nachlesen offen ist (ändert keinen Lernstand)
+let sheetStill = false, sheetScroll = 0; // beim Blättern im Kapitel nicht neu einblenden, Listenposition merken
 const MAP_STEP = 165, MAP_TOP = 64;
 const LEVEL_NAME = { master: 'gemeistert', good: 'sicher', learn: 'lernend', fresh: 'neu' };
 const LEGEND = `<span class="legend small"><i class="s-master"></i>gemeistert <i class="s-good"></i>sicher <i class="s-learn"></i>lernend <i class="s-fresh"></i>neu</span>`;
@@ -1614,22 +1616,54 @@ function sheetHTML(deck, chId) {
   const due = st.due + st.learning, fresh = Math.min(st.fresh, 10);
   const parts = [due && `${due} fällig`, fresh && `${fresh} neue`].filter(Boolean).join(', ');
   const cards = deck._cards.filter(c => c.ch === ch.id);
-  return `<div class="sheet-back" data-act="sheet-close"></div>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(ch.title)}">
+  const peek = cards.find(c => c.key === peekKey);
+  const still = sheetStill ? 'still' : '';
+  return `<div class="sheet-back ${still}" data-act="sheet-close"></div>
+  <div class="sheet ${still}" role="dialog" aria-modal="true" aria-label="${esc(ch.title)}">
     <div class="sheet-head">
       <div class="grow"><div class="muted small">Kapitel ${i + 1} · ${cs.pct} % beherrscht</div><h2>${esc(ch.title)}</h2></div>
       <button class="icon-btn" data-act="sheet-close" aria-label="Schließen">✕</button>
     </div>
-    <div class="sheet-stars">${starsHTML(chapterStars(cs))}</div>
+    ${peek ? peekHTML(peek, cards) : `<div class="sheet-stars">${starsHTML(chapterStars(cs))}</div>
     ${segBar(cs)}
     <div class="seg-counts small">${['master', 'good', 'learn', 'fresh'].map(k => `<span><i class="s-${k}"></i>${cs.seg[k]} ${LEVEL_NAME[k]}</span>`).join('')}</div>
     <button class="btn primary big" data-act="chapter" data-ch="${esc(ch.id)}">${parts ? `Kapitel lernen <span class="small">(${parts})</span>` : 'Kapitel frei üben'}</button>
     <div class="clist">${cards.map(c => {
       const l = cardLevel(P.cards[c.key]);
       const pre = c.type === 'exam' ? `<b>${esc(c.label || '')}</b> ` : c.parent ? `<span class="muted">↳ ${typeLabel(c) || ''}</span> ` : '';
-      return `<div class="crow ${c.parent ? 'sub' : ''}"><i class="dot s-${l}"></i><span class="grow">${pre}${inline(c.q)}</span><span class="muted small">${LEVEL_NAME[l]}</span></div>`;
-    }).join('')}</div>
+      return `<button class="crow ${c.parent ? 'sub' : ''}" data-act="peek" data-key="${esc(c.key)}"><i class="dot s-${l}"></i><span class="grow">${pre}${inline(c.q)}</span><span class="muted small">${LEVEL_NAME[l]}</span><span class="chev" aria-hidden="true">›</span></button>`;
+    }).join('')}</div>`}
   </div>`;
+}
+
+// Frage mit Lösung zum Nachlesen (aus der Kapitelübersicht, ohne Abfrage)
+function peekHTML(c, cards) {
+  const i = cards.indexOf(c), prev = cards[i - 1], nextC = cards[i + 1];
+  const nav = (k, label) => (k ? `<button class="btn ghost" data-act="peek" data-key="${esc(k.key)}">${label}</button>` : '<span></span>');
+  const head = `<div class="peek-nav">
+      <button class="btn ghost" data-act="peek-back">‹ Alle Fragen</button>
+      <span class="muted small">${i + 1} / ${cards.length}</span>
+    </div>
+    <div class="chips">${c.parent ? parentChip(c) : ''}<span class="chip mode">${typeLabel(c) || '❓ Frage'}</span></div>
+    <div class="peek-q">${inline(c.q)}</div>${qImg(c)}`;
+  let body;
+  if (c.type === 'exam') {
+    body = `<div class="md">${md(c.answer)}</div>
+      <div class="peek-box"><h3>Darauf kommt es an</h3><ul class="keypoints">${c.checklist.map(p => `<li>${inline(p)}</li>`).join('')}</ul></div>`;
+  } else if (c.type === 'order') {
+    body = `<ol class="sol-list">${c.items.map(t => `<li>${inline(t)}</li>`).join('')}</ol>`;
+  } else if (c.type === 'pairs') {
+    body = `<div class="table-wrap"><table><tbody>${c.pairs.map(([a, b]) => `<tr><td><b>${inline(a)}</b></td><td>${inline(b)}</td></tr>`).join('')}</tbody></table></div>`;
+  } else if (c.type === 'grid') {
+    body = `<div class="table-wrap"><table><tbody>${c.rows.map(r => {
+      const opts = r.options || c.options || [], right = [].concat(r.correct);
+      return `<tr><td>${inline(r.label)}</td><td><b>${right.map(k => inline(String(opts[k] ?? ''))).join(', ')}</b></td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  } else {
+    body = `<div class="peek-a">${fmt(c.a)}</div>${c.alt?.length ? `<p class="muted small">Auch richtig: ${c.alt.map(esc).join(' · ')}</p>` : ''}`;
+  }
+  return `${head}<div class="peek-body">${body}${c.type !== 'exam' ? hintHTML(c) : ''}</div>
+    <div class="peek-nav">${nav(prev, '‹ Vorige')}${nav(nextC, 'Nächste ›')}</div>`;
 }
 
 function renderSession() {
@@ -2131,8 +2165,15 @@ const ACTIONS = {
   start: () => startSession('learn'),
   extra: () => startSession('learn', { extraNew: 10 }),
   chapter: el => { mapSel = null; startSession('learn', { chapter: el.dataset.ch }); },
-  node: el => { mapSel = el.dataset.ch; render(); },
-  'sheet-close': () => { mapSel = null; render(); },
+  node: el => { mapSel = el.dataset.ch; peekKey = null; sheetStill = false; render(); },
+  'sheet-close': () => { mapSel = null; peekKey = null; render(); },
+  peek: el => {
+    const sheet = app.querySelector('.sheet');
+    if (!peekKey && sheet) sheetScroll = sheet.scrollTop;
+    peekKey = el.dataset.key; sheetStill = true; render();
+    app.querySelector('.sheet')?.scrollTo(0, 0);
+  },
+  'peek-back': () => { peekKey = null; sheetStill = true; render(); app.querySelector('.sheet')?.scrollTo(0, sheetScroll); },
   modules: () => { modSheet = true; render(); },
   'modules-close': () => { modSheet = false; render(); },
   'pick-deck': el => {
@@ -2239,6 +2280,7 @@ app.addEventListener('change', e => {
 
 document.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (view === 'home' && peekKey && e.key === 'Escape') { ACTIONS['peek-back'](); return; }
   if (view === 'home' && (mapSel || modSheet) && e.key === 'Escape') { mapSel = null; modSheet = false; render(); return; }
   if (view === 'speed' && S && /^[1-4]$/.test(e.key)) { speedAnswer(+e.key - 1); return; }
   if (view !== 'session' || !S?.cur) return;

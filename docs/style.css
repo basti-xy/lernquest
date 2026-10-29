@@ -414,6 +414,16 @@ body.noscroll { overflow: hidden; }
 .seg-counts i, .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; }
 .clist { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .crow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+.crow { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); color: inherit; font: inherit; font-size: .92rem; text-align: left; cursor: pointer; }
+.crow:hover { background: var(--surface-2); }
+.crow .chev { color: var(--muted); font-size: 1.2rem; }
+.sheet.still, .sheet-back.still { animation: none; }
+.peek-nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.peek-q { font-size: 1.15rem; font-weight: 650; line-height: 1.4; }
+.peek-a { font-size: 1.1rem; font-weight: 650; color: var(--accent); }
+.peek-body { display: flex; flex-direction: column; gap: 10px; }
+.peek-box { border-top: 1px solid var(--line); padding-top: 10px; }
+.peek-box h3 { font-size: 1rem; margin-bottom: 6px; }
 .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
