@@ -1,7 +1,7 @@
 // Service Worker: Network-first, damit Updates sofort ankommen – offline wird aus dem Cache geliefert.
 // Inhalte und Fortschritt liegen nicht hier, sondern privat bei GitHub (die App speichert sie selbst
 // in einem eigenen Cache „lernquest-data-…“ zwischen, den dieser Service Worker nicht anrührt).
-const CACHE = 'lernquest-app-v2';
+const CACHE = 'lernquest-app-v3';
 const ASSETS = [
   './',
   'index.html',
@@ -11,6 +11,8 @@ const ASSETS = [
   'manifest.webmanifest',
   'icon-180.png',
   'icon-512.png',
+  'icon-192.png',
+  'icon.svg',
 ];
 
 self.addEventListener('install', (event) => {
