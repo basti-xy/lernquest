@@ -461,6 +461,8 @@ body.noscroll { overflow: hidden; }
 .qcard .q { font-size: 1.3rem; font-weight: 650; line-height: 1.4; text-wrap: balance; }
 .qcard .a { font-size: 1.2rem; color: var(--accent); font-weight: 650; text-wrap: balance; }
 .qcard.intro { border: 2px solid var(--gold); }
+.qcard .q-img { margin-top: 12px; text-align: left; }
+.qcard .q-img figure { margin: 0; }
 .divider { height: 1px; background: var(--line); margin: 18px 0; }
 .hint { margin-top: 14px; padding: 10px 14px; border-radius: 12px; background: var(--gold-soft); font-size: .95rem; text-align: left; }
 

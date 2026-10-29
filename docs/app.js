@@ -1647,6 +1647,8 @@ function renderSession() {
   app.querySelector('.fb')?.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
 }
 
+// Optionales Bild zur Frage (Feld `img`), z. B. eine Plantafel, die man zum Lösen braucht.
+const qImg = c => (c.img ? `<div class="q-img md">${md([`![](${c.img})`])}</div>` : '');
 const hintHTML = c => (c.hint ? `<div class="hint">💡 ${fmt(c.hint)}</div>` : '');
 const parentChip = c => (c.parent ? `<span class="chip">Teilübung zu ${esc(c.parent)}</span>` : '');
 const chips = (c, label, extra = '') => `<div class="chips">${extra}<span class="chip">${esc(c.chTitle)}</span>${parentChip(c)}<span class="chip mode">${label}</span></div>`;
@@ -1657,7 +1659,7 @@ function introHTML(it) {
   const c = cardOf(it.key);
   if (c.type === 'exam') {
     return `${chips(c, `✨ Neue Prüfungsfrage ${esc(c.label || '')}`)}
-      <div class="qcard exam"><div class="q">${inline(c.q)}</div></div>
+      <div class="qcard exam"><div class="q">${inline(c.q)}</div>${qImg(c)}</div>
       <div class="card md">${md(c.answer)}</div>
       <div class="card"><h2>Darauf kommt es an</h2><ul class="keypoints">${c.checklist.map(p => `<li>${inline(p)}</li>`).join('')}</ul></div>
       <p class="muted center small">Lies dir die Lösung in Ruhe durch – gleich wird abgefragt.</p>
@@ -1665,7 +1667,7 @@ function introHTML(it) {
   }
   return `${chips(c, '✨ Neue Karte')}
     <div class="qcard intro">
-      <div class="q">${fmt(c.q)}</div>
+      <div class="q">${fmt(c.q)}</div>${qImg(c)}
       <div class="divider"></div>
       <div class="a">${fmt(c.a)}</div>
       ${hintHTML(c)}
@@ -1675,7 +1677,7 @@ function introHTML(it) {
 }
 
 function examHTML(it, c) {
-  const head = `${chips(c, typeLabel(c))}<div class="qcard exam"><div class="q">${inline(c.q)}</div></div>`;
+  const head = `${chips(c, typeLabel(c))}<div class="qcard exam"><div class="q">${inline(c.q)}</div>${qImg(c)}</div>`;
   if (!it.revealed) {
     return `${head}
       ${it.write
@@ -1716,7 +1718,7 @@ function orderHTML(it, c) {
   const pool = it.pool.filter(i => !it.seq.includes(i))
     .map(i => `<button class="opt" data-act="ord-add" data-i="${i}"><span>${inline(c.items[i])}</span></button>`).join('');
   return `${chips(c, typeLabel(c))}
-    <div class="qcard"><div class="q">${inline(c.q)}</div></div>
+    <div class="qcard"><div class="q">${inline(c.q)}</div>${qImg(c)}</div>
     <div class="seq">${seq}${r ? '' : slots}</div>
     ${r
       ? structFeedback(it, c, r.ok ? '' : `<div class="solution">Richtige Reihenfolge:</div><ol class="sol-list">${c.items.map(t => `<li>${inline(t)}</li>`).join('')}</ol>`)
@@ -1735,7 +1737,7 @@ function pairsHTML(it, c) {
     return `<button class="mbtn ${cls}" data-act="pair" data-side="${side}" data-i="${idx}" ${done ? 'disabled' : ''}>${inline(c.pairs[idx][side === 'q' ? 0 : 1])}</button>`;
   };
   return `${chips(c, typeLabel(c))}
-    <div class="qcard"><div class="q">${inline(c.q)}</div></div>
+    <div class="qcard"><div class="q">${inline(c.q)}</div>${qImg(c)}</div>
     <div class="match">
       <div class="col">${it.qs.map(i => btn('q', i)).join('')}</div>
       <div class="col">${it.as.map(i => btn('a', i)).join('')}</div>
@@ -1758,7 +1760,7 @@ function gridHTML(it, c) {
   }).join('');
   const complete = it.sel.every(s => s.length);
   return `${chips(c, typeLabel(c))}
-    <div class="qcard"><div class="q">${inline(c.q)}</div></div>
+    <div class="qcard"><div class="q">${inline(c.q)}</div>${qImg(c)}</div>
     <div class="gridx">${rows}</div>
     ${r
       ? structFeedback(it, c, `<div>${r.okRows.filter(Boolean).length}/${c.rows.length} Zeilen richtig${c.multi ? ' · grün umrandet = ebenfalls richtig' : ''}</div>`)
@@ -1776,7 +1778,7 @@ function quizHTML(it) {
 
   if (it.mode === 'mc') {
     return `${chips(c, label)}
-      <div class="qcard"><div class="q">${fmt(c.q)}</div></div>
+      <div class="qcard"><div class="q">${fmt(c.q)}</div>${qImg(c)}</div>
       <div class="options">${it.options.map((o, i) => {
         const cls = !r ? '' : o === it.correctOpt ? 'right' : i === r.chosen ? 'wrong' : 'dim';
         return `<button class="opt ${cls}" data-act="mc" data-i="${i}" ${r ? 'disabled' : ''}><span class="key">${i + 1}</span><span>${fmt(o)}</span></button>`;
@@ -1787,7 +1789,7 @@ function quizHTML(it) {
   if (it.mode === 'type') {
     return `${chips(c, label)}
       <form data-form="type" autocomplete="off">
-        <div class="qcard"><div class="q">${fmt(c.q)}</div></div>
+        <div class="qcard"><div class="q">${fmt(c.q)}</div>${qImg(c)}</div>
         <input class="answer-input ${r ? r.grade : ''}" data-gap="0" placeholder="Deine Antwort …" value="${r ? esc(r.given) : ''}" ${r ? 'disabled' : ''}
           autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
         ${r ? '' : `<div class="row end"><button type="button" class="btn ghost" data-act="dunno">Weiß ich nicht</button><button class="btn primary">Prüfen ⏎</button></div>`}
@@ -1811,7 +1813,7 @@ function quizHTML(it) {
     }).join('');
     return `${chips(c, label)}
       <form data-form="type" autocomplete="off">
-        <div class="qcard"><div class="cloze">${text}</div></div>
+        <div class="qcard"><div class="cloze">${text}</div>${qImg(c)}</div>
         ${r ? '' : `<div class="row end"><button type="button" class="btn ghost" data-act="dunno">Weiß ich nicht</button><button class="btn primary">Prüfen ⏎</button></div>`}
       </form>
       ${feedbackHTML(it, c)}`;
@@ -1828,7 +1830,7 @@ function quizHTML(it) {
   const names = ['Nochmal', 'Schwer', 'Gut', 'Leicht'];
   return `${chips(c, label)}
     <div class="qcard ${it.revealed ? 'revealed' : ''}">
-      <div class="q">${fmt(c.q)}</div>
+      <div class="q">${fmt(c.q)}</div>${qImg(c)}
       ${it.revealed ? `<div class="divider"></div><div class="a">${fmt(c.a)}</div>${hintHTML(c)}` : ''}
     </div>
     ${!it.revealed
@@ -1914,7 +1916,7 @@ function renderSpeed() {
       <span class="pill gold num">⚡ ${S.score}</span>
     </header>
     <div class="chips"><span class="chip mode">⚡ Speed-Runde</span><span class="chip">Rekord ${Math.max(S.startBest, S.score)}</span></div>
-    <div class="qcard"><div class="q">${fmt(c.q)}</div></div>
+    <div class="qcard"><div class="q">${fmt(c.q)}</div>${qImg(c)}</div>
     <div class="options">${it.options.map((o, i) => {
       const cls = !r ? '' : o === it.correctOpt ? 'right' : i === r.chosen ? 'wrong' : 'dim';
       return `<button class="opt ${cls}" data-act="speed-mc" data-i="${i}" ${r ? 'disabled' : ''}><span class="key">${i + 1}</span><span>${fmt(o)}</span></button>`;

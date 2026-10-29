@@ -1,7 +1,7 @@
 // Service Worker: Network-first, damit Updates sofort ankommen – offline wird aus dem Cache geliefert.
 // Inhalte und Fortschritt liegen nicht hier, sondern privat bei GitHub (die App speichert sie selbst
 // in einem eigenen Cache „lernquest-data-…“ zwischen, den dieser Service Worker nicht anrührt).
-const CACHE = 'lernquest-app-v1';
+const CACHE = 'lernquest-app-v2';
 const ASSETS = [
   './',
   'index.html',

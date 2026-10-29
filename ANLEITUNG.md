@@ -68,6 +68,8 @@ Pflicht sind nur `id`, `q` und `a`. Alles andere ist optional:
 - `wrong` – gute falsche Antworten für Multiple Choice (sonst werden Antworten anderer Karten genommen)
 - `cloze` – Lückentext-Variante der Karte
 - `hint` – Eselsbrücke/Erklärung
+- `img` – Bild zur Frage (z. B. `media/<modul>/plantafel.png`), wird schon bei der Frage angezeigt –
+  für Aufgaben, die man nur mit dem Bild lösen kann (gilt für alle Kartentypen)
 - `modes` – erlaubte Abfragearten einschränken: `mc`, `type`, `cloze`, `flip`, `match`
   (sinnvoll bei langen Antworten, die man nicht exakt eintippen kann)
 
