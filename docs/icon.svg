@@ -1,29 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#4f4fd1"/>
-      <stop offset="1" stop-color="#8b5cf6"/>
-    </linearGradient>
-    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffd76a"/>
-      <stop offset="1" stop-color="#f5a623"/>
-    </linearGradient>
-    <radialGradient id="glow">
-      <stop offset="0" stop-color="#fff" stop-opacity=".35"/>
-      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6363e0"/><stop offset="1" stop-color="#4848c4"/></linearGradient></defs>
   <rect width="512" height="512" fill="url(#bg)"/>
-  <!-- Lichtschein hinter dem Stern -->
-  <circle cx="256" cy="186" r="130" fill="url(#glow)"/>
-  <!-- Stern = Ziel der Quest -->
-  <polygon points="256.0,100.0 275.4,151.3 330.2,153.9 287.4,188.2 301.8,241.1 256.0,211.0 210.2,241.1 224.6,188.2 181.8,153.9 236.6,151.3" fill="url(#gold)" stroke="#fff" stroke-width="8" stroke-linejoin="round"/>
-  <path d="M372 112 Q375.6 128.4 392 132 Q375.6 135.6 372 152 Q368.4 135.6 352 132 Q368.4 128.4 372 112 Z" fill="#fff" opacity=".9"/>
-  <path d="M140 136 Q142.52 147.48 154 150 Q142.52 152.52 140 164 Q137.48 152.52 126 150 Q137.48 147.48 140 136 Z" fill="#fff" opacity=".9"/>
-  <!-- Aufgeschlagenes Buch -->
-  <path d="M256 318 C216 292 162 284 100 292 L100 404 C162 396 216 404 256 430 Z" fill="#fff"/>
-  <path d="M256 318 C296 292 350 284 412 292 L412 404 C350 396 296 404 256 430 Z" fill="#eceafe"/>
-  <path d="M256 318 L256 430" stroke="#c9c5f5" stroke-width="6"/>
-  <path d="M132 322 C170 318 206 324 232 338 M132 352 C170 348 206 354 232 368 M132 382 C170 378 206 384 232 398" fill="none" stroke="#c9c5f5" stroke-width="7" stroke-linecap="round"/>
-  <path d="M380 322 C342 318 306 324 280 338 M380 352 C342 348 306 354 280 368 M380 382 C342 378 306 384 280 398" fill="none" stroke="#c9c5f5" stroke-width="7" stroke-linecap="round"/>
+  <!-- L mit Lernstufen -->
+  <path d="M150 112 L150 352 Q150 400 198 400 L230 400" fill="none" stroke="#fff" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="268" y="368" width="40" height="64" rx="14" fill="#f29a1f"/>
+  <rect x="324" y="320" width="40" height="112" rx="14" fill="#2f80ed"/>
+  <rect x="380" y="264" width="40" height="168" rx="14" fill="#17a34a"/>
 </svg>
