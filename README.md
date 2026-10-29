@@ -39,6 +39,8 @@ derselben `*.github.io`-Adresse.
 - Eine Runde (Standard 20 Karten) nimmt die schwächsten Karten zuerst, bei gleicher Stufe die am längsten nicht
   gesehenen – mit etwas Zufall, damit die Reihenfolge nie gleich ist. Es gibt keine Fälligkeiten nach Datum,
   „Lernen starten“ hat also immer etwas zu tun.
+- Auffrischung: ca. 10 % jeder Runde (bei 20 Karten 2 Plätze) gehen an sichere Karten (Stufe 4–5), die am
+  längsten nicht dran waren – so kommt auch Perfektes regelmäßig wieder.
 - Neue Karten (in Kapitelreihenfolge, höchstens 5 pro Runde) kommen nur dazu, solange weniger als 12 Karten
   auf Stufe 0–1 stehen: erst festigen, dann Neues. „+10 neue“ holt trotzdem mehr dazu.
 - Falsch beantwortete Karten kommen in derselben Runde nach 2–4 Karten noch einmal.

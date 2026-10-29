@@ -893,8 +893,13 @@ function buildLearnQueue(deck, opts) {
   const byLast = [...seen].sort((a, b) => (P.cards[a.key].last || 0) - (P.cards[b.key].last || 0));
   const age = new Map(byLast.map((c, i) => [c.key, byLast.length > 1 ? 1 - i / (byLast.length - 1) : 1]));
   const score = c => boxOf(P.cards[c.key]) - 1.5 * age.get(c.key) + Math.random() * 1.2;
-  const picked = seen.map(c => ({ c, v: score(c) })).sort((a, b) => a.v - b.v)
-    .slice(0, Math.max(0, setting('roundSize') - news.length)).map(x => x.c);
+  const slots = Math.max(0, setting('roundSize') - news.length);
+  // Auffrischung: ca. 10 % der Plätze (mind. 1) für sichere Karten (Stufe 4–5), die am längsten nicht dran waren –
+  // so kommt auch Perfektes regelmäßig wieder, selbst wenn noch viel wackelt.
+  const refresh = byLast.filter(c => boxOf(P.cards[c.key]) >= 4).slice(0, Math.min(slots, Math.max(1, Math.round(slots * 0.1))));
+  const rest = seen.filter(c => !refresh.includes(c));
+  const picked = [...refresh, ...rest.map(c => ({ c, v: score(c) })).sort((a, b) => a.v - b.v)
+    .slice(0, slots - refresh.length).map(x => x.c)];
   const quiz = shuffle(picked).map(c => ({ type: 'quiz', key: c.key }));
   // Fragen und Prüfungsfragen werden erst vorgestellt; Teilübungen (Inhalt kennt man aus der Prüfungsfrage) starten direkt.
   const newItem = c => ({ type: c.type === 'exam' || (c.type === 'qa' && !c.parent) ? 'intro' : 'quiz', key: c.key });
