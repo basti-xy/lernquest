@@ -1,7 +1,7 @@
 # Lernquest
 
 Statische Lern-App (HTML/CSS/JS, kein Backend) zum spielerischen Auswendiglernen:
-Spaced Repetition, verschiedene Abfragearten (Multiple Choice, Eintippen, Lückentext, Karteikarte,
+Lernstufen ohne feste Termine (schwache Karten zuerst, nie leer, Reihenfolge immer anders), verschiedene Abfragearten (Multiple Choice, Eintippen, Lückentext, Karteikarte,
 Zuordnen, Reihenfolge, Ankreuzen, Prüfungsfragen mit Checkliste), XP, Level, Streak, Tagesquests,
 Erfolge, Speed-Runde und eine Weltkarte pro Modul. In der Kapitelübersicht (Kapitel auf der Weltkarte
 antippen) lässt sich jede Frage samt Lösung nachlesen, ohne abgefragt zu werden.
@@ -32,6 +32,16 @@ Token: *Settings → Developer settings → Fine-grained tokens*. Bei *Repositor
 Daten-Repository auswählen, bei *Contents* **Read and write** setzen. Der Token wird nur im Browser
 des Geräts gespeichert und nur an `api.github.com` gesendet. Er gilt für alle eigenen Apps unter
 derselben `*.github.io`-Adresse.
+
+## Lernen
+
+- Jede Karte hat eine Lernstufe 0–5: falsch → 0, schwer → eine Stufe runter, gut → +1, leicht → +2.
+- Eine Runde (Standard 20 Karten) nimmt die schwächsten Karten zuerst, bei gleicher Stufe die am längsten nicht
+  gesehenen – mit etwas Zufall, damit die Reihenfolge nie gleich ist. Es gibt keine Fälligkeiten nach Datum,
+  „Lernen starten“ hat also immer etwas zu tun.
+- Neue Karten (in Kapitelreihenfolge, höchstens 5 pro Runde) kommen nur dazu, solange weniger als 12 Karten
+  auf Stufe 0–1 stehen: erst festigen, dann Neues. „+10 neue“ holt trotzdem mehr dazu.
+- Falsch beantwortete Karten kommen in derselben Runde nach 2–4 Karten noch einmal.
 
 ## Abgleich
 

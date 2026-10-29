@@ -322,7 +322,7 @@ function syncBadge() {
 
 // ---------- Einstellungen (jeder Wert mit eigenem Zeitstempel) ----------
 
-const DEFAULTS = { newPerDay: 10, dailyGoal: 15, sound: true, examWrite: false };
+const DEFAULTS = { roundSize: 20, newPerRound: 5, dailyGoal: 15, sound: true, examWrite: false };
 const setting = k => { const e = P.settings[k]; return e && e.v !== null && e.v !== undefined ? e.v : DEFAULTS[k]; };
 function setSetting(k, v) { P.settings = { ...P.settings, [k]: { v, t: Date.now() } }; save(); }
 
@@ -617,7 +617,9 @@ function distractors(c, deck, n) {
 }
 
 // =====================================================================
-// Spaced Repetition (vereinfachtes SM-2)
+// Lernstufen statt Zeitabständen: Jede Karte hat eine Stufe 0–5. Falsch → 0, schwer → −1 (mind. 1),
+// gut → +1, leicht → +2. Eine Runde nimmt die schwächsten Karten zuerst (bei gleicher Stufe die am
+// längsten nicht gesehenen, mit etwas Zufall) – es gibt also immer etwas zu üben, unabhängig vom Datum.
 // Bewertung: 0 = nochmal, 1 = schwer, 2 = gut, 3 = leicht
 // =====================================================================
 
@@ -628,38 +630,28 @@ const examDate = deck => (deck && setting(`exam:${deck.id}`)) || examStd(deck);
 const fmtDate = k => k.split('-').reverse().join('.');
 const daysUntil = k => (k ? Math.round((parseDay(k) - startOfDay()) / DAY) : null);
 
-function examCap(deckId) {
-  const left = daysUntil(examDate(DECKS.find(d => d.id === deckId)));
-  return left > 0 ? Math.max(1, Math.floor(left / 2)) : 365;
+const MAX_BOX = 5;
+// Stufe einer Karte; ältere Stände (Zeitabstände) werden beim Lesen umgerechnet.
+function boxOf(s) {
+  if (!s || s.state === 'new') return 0;
+  if (typeof s.box === 'number') return s.box;
+  if (s.state === 'learning') return 0;
+  return s.interval >= 10 ? 4 : s.interval >= 3 ? 2 : 1;
+}
+function nextBox(box, rating) {
+  if (rating === 0) return 0;
+  if (rating === 1) return Math.max(1, box - 1);
+  return Math.min(MAX_BOX, Math.max(1, box) + (rating === 3 ? 2 : 1));
 }
 
-function computeNext(prev, rating, cap) {
-  const s = { ease: 2.5, interval: 0, reps: 0, lapses: 0, ...prev };
-  if (s.state !== 'review') {
-    if (rating <= 1) return { ...s, state: 'learning' };
-    const base = s.relearnIv || 1;
-    const iv = rating === 3 ? Math.max(base + 2, 3) : base;
-    const n = { ...s, state: 'review', interval: Math.min(iv, cap) };
-    delete n.relearnIv;
-    return n;
-  }
-  if (rating === 0) {
-    return { ...s, state: 'learning', lapses: s.lapses + 1, ease: Math.max(1.3, s.ease - 0.2), relearnIv: Math.max(1, Math.round(s.interval * 0.3)) };
-  }
-  let iv, ease = s.ease;
-  if (rating === 1) { iv = Math.max(s.interval + 1, Math.round(s.interval * 1.2)); ease = Math.max(1.3, ease - 0.15); }
-  else if (rating === 2) iv = Math.max(s.interval + 1, Math.round(s.interval * ease));
-  else { iv = Math.max(s.interval + 2, Math.round(s.interval * ease * 1.3)); ease += 0.15; }
-  return { ...s, state: 'review', ease, interval: Math.min(iv, cap, 365) };
-}
-
-function applyRating(key, rating, deckId) {
+function applyRating(key, rating) {
   const prev = P.cards[key];
   const now = Date.now();
-  const n = computeNext(prev || { state: 'new' }, rating, examCap(deckId));
-  n.due = n.state === 'review' ? addDays(startOfDay(now), n.interval) : now;
-  n.last = now;
+  const box = nextBox(boxOf(prev), rating);
+  const n = { ...(prev || {}), state: rating === 0 ? 'learning' : 'review', box, last: now };
+  for (const k of ['ease', 'interval', 'due', 'relearnIv']) delete n[k]; // Felder der alten Zeitplanung
   n.reps = (n.reps || 0) + 1;
+  if (rating === 0) n.lapses = (n.lapses || 0) + 1;
   n.intro ??= now;
   if (rating === 0) n.miss = true;
   else if (rating >= 2) { if (prev?.miss) bump('fixed'); n.miss = false; }
@@ -667,30 +659,30 @@ function applyRating(key, rating, deckId) {
   return n;
 }
 
-const isDueState = s => !!s && (s.state === 'learning' || (s.state === 'review' && s.due <= Date.now()));
+// schwach = gesehen, aber Stufe 0–1 (wird bevorzugt geübt)
+const isWeak = s => !!s && s.state !== 'new' && boxOf(s) <= 1;
 
 function cardLevel(s) {
   if (!s || s.state === 'new') return 'fresh';
-  if (s.state === 'learning') return 'learn';
-  if (s.interval >= 10) return 'master';
-  if (s.interval >= 3) return 'good';
-  return 'learn';
+  const b = boxOf(s);
+  return b >= 4 ? 'master' : b >= 2 ? 'good' : 'learn';
 }
 const LEVEL_SCORE = { fresh: 0, learn: 0.25, good: 0.65, master: 1 };
 
+// Neue Karten kommen nur dazu, solange nicht zu viele Karten schwach sind – erst festigen, dann Neues.
+const WEAK_LIMIT = 12;
+
 function deckStatus(deck, chapter) {
-  const now = Date.now(), sod = startOfDay();
-  let due = 0, learning = 0, fresh = 0, newToday = 0;
+  let weak = 0, fresh = 0, seen = 0;
   for (const c of deck._cards) {
     if (chapter && c.ch !== chapter) continue;
     const s = P.cards[c.key];
     if (!s || s.state === 'new') { fresh++; continue; }
-    if (s.state === 'learning') learning++;
-    else if (s.due <= now) due++;
-    if ((s.intro || 0) >= sod) newToday++;
+    seen++;
+    if (isWeak(s)) weak++;
   }
-  const newAvail = Math.min(fresh, Math.max(0, setting('newPerDay') - newToday));
-  return { due, learning, fresh, newToday, newAvail };
+  const newAvail = Math.min(fresh, Math.max(seen ? 0 : 1, Math.min(setting('newPerRound'), WEAK_LIMIT - weak)));
+  return { weak, fresh, seen, newAvail };
 }
 
 function chapterStats(deck, chId) {
@@ -885,27 +877,33 @@ let S = null;
 
 const MODE_LABEL = { mc: '🔘 Multiple Choice', type: '⌨️ Eintippen', cloze: '🧩 Lückentext', flip: '🃏 Karteikarte', match: '🔗 Zuordnen' };
 
+// Eine Runde: schwächste Karten zuerst, bei gleicher Stufe die am längsten nicht gesehenen; etwas Zufall,
+// damit die Reihenfolge nie gleich ist. Neue Karten (in Kapitelreihenfolge) werden dazwischengestreut.
 function buildLearnQueue(deck, opts) {
-  const now = Date.now(), reviews = [], learning = [], fresh = [];
+  const seen = [], fresh = [];
   for (const c of deck._cards) {
     if (opts.chapter && c.ch !== opts.chapter) continue;
     const s = P.cards[c.key];
-    if (!s || s.state === 'new') fresh.push(c);
-    else if (s.state === 'learning') learning.push(c);
-    else if (s.due <= now) reviews.push(c);
+    (!s || s.state === 'new' ? fresh : seen).push(c);
   }
   const st = deckStatus(deck, opts.chapter);
-  const nNew = opts.extraNew ?? (opts.chapter ? Math.min(fresh.length, 10) : st.newAvail);
+  const nNew = Math.min(fresh.length, opts.extraNew ?? st.newAvail);
   const news = fresh.slice(0, nNew);
-  const quiz = [...learning, ...shuffle(reviews.slice(0, 200))].map(c => ({ type: 'quiz', key: c.key }));
-  // Neue Karten zwischen die Wiederholungen streuen.
+  // Alter: 0 = gerade gesehen … 1 = am längsten her
+  const byLast = [...seen].sort((a, b) => (P.cards[a.key].last || 0) - (P.cards[b.key].last || 0));
+  const age = new Map(byLast.map((c, i) => [c.key, byLast.length > 1 ? 1 - i / (byLast.length - 1) : 1]));
+  const score = c => boxOf(P.cards[c.key]) - 1.5 * age.get(c.key) + Math.random() * 1.2;
+  const picked = seen.map(c => ({ c, v: score(c) })).sort((a, b) => a.v - b.v)
+    .slice(0, Math.max(0, setting('roundSize') - news.length)).map(x => x.c);
+  const quiz = shuffle(picked).map(c => ({ type: 'quiz', key: c.key }));
   // Fragen und Prüfungsfragen werden erst vorgestellt; Teilübungen (Inhalt kennt man aus der Prüfungsfrage) starten direkt.
   const newItem = c => ({ type: c.type === 'exam' || (c.type === 'qa' && !c.parent) ? 'intro' : 'quiz', key: c.key });
   const out = [];
   let ni = 0;
+  const every = news.length ? Math.max(1, Math.floor(quiz.length / news.length)) : 1;
   quiz.forEach((q, i) => {
     out.push(q);
-    if (i % 2 === 1 && ni < news.length) out.push(newItem(news[ni++]));
+    if ((i + 1) % every === 0 && ni < news.length) out.push(newItem(news[ni++]));
   });
   while (ni < news.length) out.push(newItem(news[ni++]));
   return out;
@@ -919,14 +917,8 @@ function startSession(kind, opts = {}) {
     queue = shuffle(deck._cards.filter(c => P.cards[c.key]?.miss)).slice(0, 30).map(c => ({ type: 'quiz', key: c.key }));
   } else {
     queue = buildLearnQueue(deck, opts);
-    if (!queue.length && opts.chapter) {
-      // Nichts fällig: Kapitel frei üben (ohne den Lernplan zu verändern).
-      kind = 'drill';
-      queue = shuffle(deck._cards.filter(c => c.ch === opts.chapter && P.cards[c.key] && P.cards[c.key].state !== 'new'))
-        .slice(0, 20).map(c => ({ type: 'quiz', key: c.key }));
-    }
   }
-  if (!queue.length) { toast('Gerade gibt es hier nichts zu tun – super! 🎉'); return; }
+  if (!queue.length) { toast(kind === 'mistakes' ? 'Keine offenen Fehler – super! 🎉' : 'Hier gibt es noch keine Karten.'); return; }
   const st = computeStats();
   S = {
     kind, opts, deck, queue, cur: null, done: 0, combo: 0,
@@ -940,7 +932,6 @@ function startSession(kind, opts = {}) {
 
 const cardOf = key => S.deck._byKey[key];
 const itemSize = it => (it.type === 'match' ? it.keys.length : 1);
-const isPractice = s => (S.kind === 'mistakes' || S.kind === 'drill') && !isDueState(s);
 
 function next() {
   if (!S) return;
@@ -962,7 +953,7 @@ function requeue(key, minGap = 2, maxGap = 4) {
 function pickMode(c, s) {
   if (c.type !== 'qa') return c.type;
   const allowed = m => !c.modes || c.modes.includes(m);
-  const iv = s && s.state === 'review' ? s.interval : 0;
+  const iv = boxOf(s); // höhere Stufe → anspruchsvollere Abfrage
   const w = [];
   if (c.cloze && allowed('cloze')) w.push(['cloze', iv >= 2 ? 3 : 1.5]);
   if (c._mcOk && allowed('mc')) w.push(['mc', iv < 3 ? 4 : 1.5]);
@@ -978,7 +969,7 @@ function prepQuiz(it) {
   if (it.mode === 'mc' && !it.options) prepMC(it, c);
   else if (it.mode === 'exam' && it.write == null) {
     // Textfeld: im Klausurmodus immer, sonst sobald die Frage „sicher“ sitzt.
-    it.write = !!setting('examWrite') || (s?.state === 'review' && s.interval >= 3);
+    it.write = !!setting('examWrite') || boxOf(s) >= 3;
     it.checked = [];
   } else if (it.mode === 'order' && !it.pool) {
     it.seq = [];
@@ -1041,15 +1032,8 @@ function commitAnswer(key, rating) {
 
   const prev = P.cards[key];
   if (!prev || prev.state === 'new') { bump('new'); S.stats.newCards++; } // Teilübungen ohne Vorstellung
-  if (isPractice(prev)) {
-    const s = { ...prev, last: Date.now() };
-    if (correct) { if (s.miss) bump('fixed'); s.miss = false; } else s.miss = true;
-    P.cards[key] = s;
-    if (!correct) requeue(key);
-  } else {
-    const s = applyRating(key, rating, S.deck.id);
-    if (s.state === 'learning' || (S.kind !== 'learn' && !correct)) requeue(key);
-  }
+  applyRating(key, rating);
+  if (!correct) requeue(key);
   const xp = xpFor(correct, S.combo) + (correct && cardOf(key).type !== 'qa' ? 10 : 0); // Bonus für große Aufgaben
   bump('xp', xp);
   floatXP(xp);
@@ -1089,7 +1073,7 @@ function introOk() {
   if (it.type !== 'intro' || it.done) return;
   it.done = true;
   const now = Date.now();
-  P.cards[it.key] = { state: 'learning', ease: 2.5, interval: 0, reps: 0, lapses: 0, intro: now, last: now, due: now };
+  P.cards[it.key] = { state: 'learning', box: 0, reps: 0, lapses: 0, intro: now, last: now };
   bump('new'); bump('xp', 5); floatXP(5);
   S.stats.newCards++;
   save();
@@ -1451,24 +1435,21 @@ function renderHome() {
     return;
   }
   const st = computeStats(), deck = activeDeck(), ds = deckStatus(deck);
-  const reviewN = ds.due + ds.learning, todo = reviewN + ds.newAvail;
   const mistakes = deck._cards.filter(c => P.cards[c.key]?.miss).length;
   const goal = setting('dailyGoal'), todayAns = st.today.answers || 0;
   const examDays = daysUntil(examDate(deck));
   const learnedInDeck = deck._cards.filter(c => P.cards[c.key]?.state === 'review').length;
 
-  const hero = todo > 0
-    ? `<h1>Bereit für deine Runde?</h1>
+  // Es gibt immer eine Runde: schwache Karten zuerst, dann die übrigen, neue kommen dazu.
+  const hero = `<h1>Bereit für deine Runde?</h1>
        <div class="chips">
-         ${reviewN ? `<span class="chip">🔁 ${reviewN} ${reviewN === 1 ? 'Wiederholung' : 'Wiederholungen'}</span>` : ''}
+         ${ds.weak ? `<span class="chip">🔁 ${ds.weak} zum Festigen</span>` : ''}
          ${ds.newAvail ? `<span class="chip new">✨ ${ds.newAvail} neue</span>` : ''}
+         ${!ds.fresh && ds.seen ? '<span class="chip">✓ alle Karten kennengelernt</span>' : ''}
        </div>
-       <button class="btn primary big" data-act="start">Lernen starten</button>`
-    : `<h1>Alles erledigt für heute 🎉</h1>
-       <p class="muted">Deine Wiederholungen sind durch. ${ds.fresh ? 'Lust auf mehr?' : 'Du hast alle Karten dieses Moduls schon kennengelernt.'}</p>
        <div class="row">
-         ${ds.fresh ? `<button class="btn primary" data-act="extra">+10 neue Karten</button>` : ''}
-         <button class="btn" data-act="speed">⚡ Speed-Runde</button>
+         <button class="btn primary big grow" data-act="start">Lernen starten</button>
+         ${ds.fresh && ds.seen ? `<button class="btn" data-act="extra">+10 neue</button>` : ''}
        </div>`;
 
   app.innerHTML = `
@@ -1548,11 +1529,11 @@ function modulesSheetHTML(cur) {
       <button class="icon-btn" data-act="modules-close" aria-label="Schließen">✕</button>
     </div>
     ${DECKS.map(d => {
-      const ds = deckStatus(d), pct = deckPct(d), due = ds.due + ds.learning, active = d.id === cur.id;
+      const ds = deckStatus(d), pct = deckPct(d), due = ds.weak, active = d.id === cur.id;
       const learned = d._cards.filter(c => P.cards[c.key]?.state === 'review').length;
       const ex = examDate(d), left = daysUntil(ex);
       return `<button class="module ${active ? 'active' : ''}" data-act="pick-deck" data-deck="${esc(d.id)}" aria-pressed="${active}">
-        <div class="module-title">${esc(d.title)}${active ? ' <span class="pill">aktiv</span>' : ''}${due ? ` <span class="pill due">${due} fällig</span>` : ''}</div>
+        <div class="module-title">${esc(d.title)}${active ? ' <span class="pill">aktiv</span>' : ''}${due ? ` <span class="pill due">${due} zum Festigen</span>` : ''}</div>
         ${d.description ? `<div class="muted small">${esc(d.description)}</div>` : ''}
         ${bar(pct)}
         <div class="muted small">${d.chapters.length} Kapitel · ${learned}/${d._cards.length} Karten gelernt · ${pct} % beherrscht${ex ? ` · Prüfung ${fmtDate(ex)}${left >= 0 ? ` (in ${days(left)})` : ''}` : ''}</div>
@@ -1617,7 +1598,7 @@ function mapHTML(deck, examDays) {
   const paths = pts.slice(1).map((b, i) => `<path d="${curve(pts[i], b)}" class="${reached(i + 1) ? 'done' : ''}"/>`).join('');
 
   const nodeHTML = nodes.map((n, i) => {
-    const s = chapterStars(n.cs), due = n.st.due + n.st.learning;
+    const s = chapterStars(n.cs), due = n.st.weak;
     const cls = [i === cur ? 'current' : '', s === 3 ? 'mastered' : '', reached(i) ? '' : 'ahead'].join(' ');
     return `<button class="mnode ${cls}" style="left:${n.x}%;top:${n.y}px" data-act="node" data-ch="${esc(n.ch.id)}">
       ${i === cur ? '<span class="mhere">📍 Du bist hier</span>' : ''}
@@ -1648,8 +1629,7 @@ function sheetHTML(deck, chId) {
   const i = deck.chapters.findIndex(c => c.id === chId);
   if (i < 0) return '';
   const ch = deck.chapters[i], cs = chapterStats(deck, ch.id), st = deckStatus(deck, ch.id);
-  const due = st.due + st.learning, fresh = Math.min(st.fresh, 10);
-  const parts = [due && `${due} fällig`, fresh && `${fresh} neue`].filter(Boolean).join(', ');
+  const parts = [st.weak && `${st.weak} zum Festigen`, st.newAvail && `${st.newAvail} neue`].filter(Boolean).join(', ');
   const cards = deck._cards.filter(c => c.ch === ch.id);
   const peek = cards.find(c => c.key === peekKey);
   const still = sheetStill ? 'still' : '';
@@ -1662,7 +1642,7 @@ function sheetHTML(deck, chId) {
     ${peek ? peekHTML(peek, cards) : `<div class="sheet-stars">${starsHTML(chapterStars(cs))}</div>
     ${segBar(cs)}
     <div class="seg-counts small">${['master', 'good', 'learn', 'fresh'].map(k => `<span><i class="s-${k}"></i>${cs.seg[k]} ${LEVEL_NAME[k]}</span>`).join('')}</div>
-    <button class="btn primary big" data-act="chapter" data-ch="${esc(ch.id)}">${parts ? `Kapitel lernen <span class="small">(${parts})</span>` : 'Kapitel frei üben'}</button>
+    <button class="btn primary big" data-act="chapter" data-ch="${esc(ch.id)}">Kapitel lernen${parts ? ` <span class="small">(${parts})</span>` : ''}</button>
     <div class="clist">${cards.map(c => {
       const l = cardLevel(P.cards[c.key]);
       const pre = c.type === 'exam' ? `<b>${esc(c.label || '')}</b> ` : c.parent ? `<span class="muted">↳ ${typeLabel(c) || ''}</span> ` : '';
@@ -1845,7 +1825,7 @@ function quizHTML(it) {
   if (it.mode === 'order') return orderHTML(it, c);
   if (it.mode === 'pairs') return pairsHTML(it, c);
   if (it.mode === 'grid') return gridHTML(it, c);
-  const label = MODE_LABEL[it.mode] + (S.kind === 'mistakes' ? ' · Fehler-Training' : S.kind === 'drill' ? ' · Freies Üben' : '');
+  const label = MODE_LABEL[it.mode] + (S.kind === 'mistakes' ? ' · Fehler-Training' : '');
 
   if (it.mode === 'mc') {
     return `${chips(c, label)}
@@ -1891,13 +1871,7 @@ function quizHTML(it) {
   }
 
   // Karteikarte mit Selbstbewertung
-  const s = P.cards[it.key];
-  const practice = isPractice(s);
-  const labels = [0, 1, 2, 3].map(rt => {
-    if (practice) return '';
-    const n = computeNext(s || { state: 'new' }, rt, examCap(S.deck.id));
-    return n.state === 'review' ? days(n.interval) : 'gleich nochmal';
-  });
+  const labels = ['gleich nochmal', 'bald wieder', 'seltener', 'viel seltener'];
   const names = ['Nochmal', 'Schwer', 'Gut', 'Leicht'];
   return `${chips(c, label)}
     <div class="qcard ${it.revealed ? 'revealed' : ''}">
@@ -1955,8 +1929,8 @@ function statTile(label, value) {
 function renderSummary() {
   const s = S.stats, sm = S.summary, lv = sm.st.lv;
   const rate = s.answers ? Math.round((s.correct / s.answers) * 100) : 0;
-  const ds = deckStatus(S.deck);
-  const offerMore = S.kind === 'learn' && !S.opts.chapter && ds.fresh > 0 && ds.due + ds.learning === 0;
+  const ds = deckStatus(S.deck, S.opts.chapter);
+  const offerMore = S.kind === 'learn' && ds.fresh > 0;
   app.innerHTML = `<div class="summary">
     <section class="card center">
       <div class="big-emoji">${sm.natural ? (rate >= 80 ? '🏆' : '🎉') : '👋'}</div>
@@ -1970,8 +1944,9 @@ function renderSummary() {
     ${sm.newAch.length ? achHTML(sm.newAch.map(a => ({ ...a, done: true })), 'Neue Erfolge 🎖️') : ''}
     ${questsHTML(sm.st)}
     <div class="row center">
-      ${offerMore ? `<button class="btn" data-act="extra">+10 neue Karten</button>` : ''}
-      <button class="btn primary" data-act="home">Zur Übersicht</button>
+      ${offerMore && !S.opts.chapter ? `<button class="btn" data-act="extra">+10 neue Karten</button>` : ''}
+      <button class="btn" data-act="home">Zur Übersicht</button>
+      ${S.kind === 'learn' ? `<button class="btn primary" data-act="again">Nächste Runde</button>` : ''}
     </div>
   </div>`;
 }
@@ -2024,8 +1999,10 @@ function renderSettings() {
   </header>
   <section class="card form">
     <h2>Lernen</h2>
-    <label class="field"><span>Neue Karten pro Tag</span>
-      <input type="number" inputmode="numeric" min="1" max="200" data-set="newPerDay" value="${setting('newPerDay')}"></label>
+    <label class="field"><span>Karten pro Runde</span>
+      <input type="number" inputmode="numeric" min="5" max="200" data-set="roundSize" value="${setting('roundSize')}"></label>
+    <label class="field"><span>Neue Karten pro Runde <small class="muted">(höchstens – solange viele Karten noch wackeln, kommen weniger)</small></span>
+      <input type="number" inputmode="numeric" min="1" max="50" data-set="newPerRound" value="${setting('newPerRound')}"></label>
     <label class="field"><span>Tagesziel <small class="muted">(Antworten pro Tag für die Streak)</small></span>
       <input type="number" inputmode="numeric" min="1" max="500" data-set="dailyGoal" value="${setting('dailyGoal')}"></label>
     <label class="field check"><span>Soundeffekte</span><input type="checkbox" data-set="sound" ${setting('sound') ? 'checked' : ''}></label>
@@ -2036,7 +2013,7 @@ function renderSettings() {
   </section>
   ${deck ? `<section class="card form">
     <h2>Modul: ${esc(deck.title)}</h2>
-    <label class="field"><span>Prüfungsdatum <small class="muted">– Wiederholungen werden so geplant, dass vor der Prüfung alles nochmal drankommt.${examStd(deck) ? ` Standard: ${fmtDate(examStd(deck))}, Feld leeren setzt darauf zurück.` : ''}</small></span>
+    <label class="field"><span>Prüfungsdatum <small class="muted">– für den Countdown auf der Weltkarte.${examStd(deck) ? ` Standard: ${fmtDate(examStd(deck))}, Feld leeren setzt darauf zurück.` : ''}</small></span>
       <input type="date" data-set="exam" data-deck="${esc(deck.id)}" value="${esc(examDate(deck) || '')}"></label>
     <button class="btn danger" data-act="reset-deck">Fortschritt dieses Moduls zurücksetzen</button>
   </section>` : ''}
@@ -2201,6 +2178,7 @@ async function importProgress(file) {
 const ACTIONS = {
   start: () => startSession('learn'),
   extra: () => startSession('learn', { extraNew: 10 }),
+  again: () => startSession('learn', { ...S.opts, extraNew: undefined }),
   chapter: el => { mapSel = null; startSession('learn', { chapter: el.dataset.ch }); },
   node: el => { mapSel = el.dataset.ch; peekKey = null; sheetStill = false; render(); },
   'sheet-close': () => { mapSel = null; peekKey = null; render(); },
